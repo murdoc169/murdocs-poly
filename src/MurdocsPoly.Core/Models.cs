@@ -59,7 +59,15 @@ public sealed class PmMarket
     public decimal Volume { get; init; }
     public decimal Liquidity { get; init; }
     public List<Outcome> Outcomes { get; init; } = new();
+    /// <summary>Sports markets only: "moneyline", "spreads", "totals"... and the line for spreads and totals.</summary>
+    public string? SportsMarketType { get; init; }
+    public decimal? Line { get; init; }
+    public decimal? BestBid { get; init; }
+    public decimal? BestAsk { get; init; }
 }
+
+/// <summary>A team in a game, with the colour and logo Polymarket shows for it.</summary>
+public sealed record PmTeam(string Name, string Abbreviation, string? Color, string? Logo, string? Record, string? Ordering);
 
 /// <summary>A group of related markets (an election, a fed decision, a match). Sports events carry a start time.</summary>
 public sealed class PmEvent
@@ -75,6 +83,15 @@ public sealed class PmEvent
     public decimal Liquidity { get; init; }
     public List<string> Tags { get; init; } = new();
     public List<PmMarket> Markets { get; init; } = new();
+    /// <summary>Sports games: score like "1-0", period like "2H" or "S3", minutes played, the feed id shared by a game's events, the league name and the teams.</summary>
+    public string? Score { get; init; }
+    public string? Period { get; init; }
+    public string? Elapsed { get; init; }
+    public long? GameId { get; init; }
+    public string? League { get; init; }
+    public string? Image { get; init; }
+    public bool Ended { get; init; }
+    public List<PmTeam> Teams { get; init; } = new();
 }
 
 /// <summary>Result of Polymarket's own location check. Trading is refused from some countries; reading prices is not.</summary>
@@ -101,6 +118,14 @@ public static class Json
             JsonValueKind.String when decimal.TryParse(v.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) => d,
             _ => 0,
         };
+    }
+
+    /// <summary>A number that may be missing or null.</summary>
+    public static decimal? DecN(JsonElement e, string name)
+    {
+        if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty(name, out var v)) return null;
+        if (v.ValueKind == JsonValueKind.Number) return v.GetDecimal();
+        return v.ValueKind == JsonValueKind.String && decimal.TryParse(v.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
     }
 
     public static string Str(JsonElement e, string name) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";

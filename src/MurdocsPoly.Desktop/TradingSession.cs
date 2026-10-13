@@ -55,7 +55,7 @@ sealed class TradingSession : IDisposable
     /// <summary>Empty when trading is possible, otherwise the reason (no account, or Polymarket refuses this location).</summary>
     public async Task<string> WhyNotAsync()
     {
-        if (Account == null) return "Read-only. Add your account (Account menu) to trade.";
+        if (Account == null) return "Read-only. Add your account (Account button) to trade.";
         try { await Guard.EnsureAllowedAsync(); return ""; }
         catch (TradingBlockedException ex) { return "Read-only. " + ex.Message; }
     }

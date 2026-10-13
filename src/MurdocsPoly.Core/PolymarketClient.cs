@@ -34,6 +34,13 @@ public sealed class PolymarketClient : IDisposable
         return doc.RootElement.EnumerateArray().Select(Parse.Event).ToList();
     }
 
+    /// <summary>Games that are being played now, with their extra markets events (spreads and totals).</summary>
+    public async Task<List<PmEvent>> ListLiveGamesAsync(int limit = 300)
+    {
+        using var doc = await Get($"{Gamma}/events?tag_slug=sports&live=true&closed=false&limit={limit}");
+        return doc.RootElement.EnumerateArray().Select(Parse.Event).Where(e => !e.Ended).ToList();
+    }
+
     public async Task<PmEvent?> GetEventBySlugAsync(string slug)
     {
         using var doc = await Get($"{Gamma}/events?slug={Uri.EscapeDataString(slug)}");

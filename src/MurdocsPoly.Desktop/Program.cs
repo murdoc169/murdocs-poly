@@ -6,7 +6,7 @@ static class Program
     static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm(args.Contains("--smoke")));
+        Application.Run(new MainForm(args.Contains("--smoke"), args.FirstOrDefault(a => a.StartsWith("--shot="))?[7..]));
     }
 }
 
