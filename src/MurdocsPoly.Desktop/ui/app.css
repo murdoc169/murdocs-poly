@@ -145,3 +145,13 @@ main h1 { margin: 6px 0 20px; font-size: 32px; letter-spacing: -0.03em; font-wei
 
 .sets { min-width: 64px; text-align: center; font-weight: 600; font-size: 13px; white-space: pre; order: 5; margin-left: auto; color: var(--text); }
 .team { position: relative; }
+
+/* ---- frameless window: the header is the title bar ---- */
+header.top { app-region: drag; position: relative; padding-right: max(150px, calc((100vw - 1296px) / 2)); }
+header.top .search, header.top button, header.top input, .chip-status { app-region: no-drag; }
+.winbtns { position: absolute; top: 0; right: 0; display: flex; height: 32px; app-region: no-drag; }
+.winbtns button { width: 46px; height: 32px; display: grid; place-items: center; color: var(--muted); }
+.winbtns button svg { width: 10px; height: 10px; }
+.winbtns button:hover { background: #1c1f27; color: var(--text); }
+.winbtns button.x:hover { background: #c42b1c; color: #fff; }
+.search { margin-top: 8px; }

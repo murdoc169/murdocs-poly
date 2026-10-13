@@ -137,7 +137,7 @@ function renderTrade() {
   }
   const trading = S.status && S.status.why === "";
   el.innerHTML =
-    `<div class="panel"><div class="ev"><div><div class="t">${esc(S.sel.title)}</div><div class="o">${esc(m.question)}</div></div></div>` +
+    `<div class="panel"><div class="ev"><div><div class="t">${esc(S.sel.title)}</div>${m.question && m.question !== S.sel.title ? `<div class="o">${esc(m.question)}</div>` : ""}</div></div>` +
     `<div class="tabs2"><button class="${S.side === "buy" ? "on" : ""}" data-side="buy">Buy</button><button class="${S.side === "sell" ? "on" : ""}" data-side="sell">Sell</button>` +
     `<select id="mode"><option value="market" ${S.mode === "market" ? "selected" : ""}>Market</option><option value="limit" ${S.mode === "limit" ? "selected" : ""}>Limit</option></select></div>` +
     `<div class="outs">${o.map((x, i) => `<button class="btn o${i}${i === S.sel.index ? " sel" : ""}" data-pick="${i}">${esc(x.name)} ${cents(x.cents)}</button>`).join("")}</div>` +
@@ -176,8 +176,9 @@ async function refreshStatus() { try { S.status = await call("status"); } catch 
 
 // ---- events -------------------------------------------------------------------------------------------
 document.addEventListener("click", async e => {
-  const t = e.target.closest("[data-nav],[data-view],[data-sport],[data-m],[data-ladder],[data-side],[data-pick],[data-add],#go,#acct");
+  const t = e.target.closest("[data-win],[data-nav],[data-view],[data-sport],[data-m],[data-ladder],[data-side],[data-pick],[data-add],#go,#acct");
   if (!t) return;
+  if (t.dataset.win) { call("win", { op: t.dataset.win }).catch(() => {}); return; }
   if (t.dataset.nav) { S.nav = t.dataset.nav; S.query = ""; $("#q").value = ""; S.view = "live"; S.sport = null; renderTabs(); renderSide(); load(); }
   else if (t.dataset.view) { S.view = t.dataset.view; S.sport = null; renderSide(); load(); }
   else if (t.dataset.sport) { S.sport = S.sport === t.dataset.sport ? null : t.dataset.sport; S.view = "live"; renderSide(); renderMain(); }

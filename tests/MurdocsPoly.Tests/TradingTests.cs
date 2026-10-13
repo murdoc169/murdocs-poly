@@ -213,3 +213,19 @@ public class TradingTests
         Assert.Single(orders); Assert.Equal(0.52m, orders[0].Price); Assert.Equal(2m, orders[0].Matched);
     }
 }
+
+public class MarketBuyTests
+{
+    [Fact]
+    public void One_dollar_market_buy_is_fok_and_below_the_five_share_limit_minimum()
+    {
+        var signer = new MurdocsPoly.Core.Trading.PolySigner("0x0000000000000000000000000000000000000000000000000000000000000001");
+        var acct = new MurdocsPoly.Core.Trading.Account("0x01", signer.Address, MurdocsPoly.Core.Trading.WalletType.Eoa);
+        var book = new MurdocsPoly.Core.OrderBook { TokenId = "123", TickSize = 0.01m, MinOrderSize = 5m };
+        var o = MurdocsPoly.Core.Trading.OrderBuilder.BuildMarketBuy(signer, acct, book, 0.55m, 1m, "key", 7, 1000);
+        Assert.Contains("\"orderType\":\"FOK\"", o.Body);
+        Assert.Contains("\"makerAmount\":\"1000000\"", o.Body);
+        Assert.Contains("\"takerAmount\":\"1810000\"", o.Body);
+        Assert.Throws<MurdocsPoly.Core.Trading.OrderRejectedException>(() => MurdocsPoly.Core.Trading.OrderBuilder.BuildMarketBuy(signer, acct, book, 0.55m, 0.5m, "key", 7, 1000));
+    }
+}

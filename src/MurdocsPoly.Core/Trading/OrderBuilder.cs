@@ -67,8 +67,33 @@ public static class OrderBuilder
         if (account.WalletType == WalletType.Eoa && !string.Equals(account.Wallet, signer.Address, StringComparison.OrdinalIgnoreCase))
             throw new OrderRejectedException("For a plain wallet the wallet address must be the key's own address.");
 
-        var makerAmount = side == Side.Buy ? Micro(usd) : Micro(s);
-        var takerAmount = side == Side.Buy ? Micro(s) : Micro(usd);
+        return Sign(signer, account, book, side, price, s, usd, side == Side.Buy ? Micro(usd) : Micro(s), side == Side.Buy ? Micro(s) : Micro(usd),
+            expirationUnixSeconds == null ? "GTC" : "GTD", expirationUnixSeconds, apiKey, salt, nowMs);
+    }
+
+    /// <summary>
+    /// A buy for a dollar amount (what the site's Market button does): fill-or-kill at the given worst price. The dollar amount is at most 2 decimals
+    /// and the minimum is the 1 $ market minimum, not the 5-share limit minimum.
+    /// </summary>
+    public static SignedOrder BuildMarketBuy(PolySigner signer, Account account, OrderBook book, decimal worstPrice, decimal usdAmount,
+        string apiKey, long salt, long nowMs)
+    {
+        var tick = book.TickSize;
+        var (priceDec, sizeDec, _) = Decimals(tick);
+        if (worstPrice < tick || worstPrice > 1 - tick) throw new OrderRejectedException($"The price must be between {tick} and {1 - tick}.");
+        if (Math.Round(worstPrice, priceDec) != worstPrice || worstPrice % tick != 0) throw new OrderRejectedException($"The price {worstPrice} is not a multiple of the tick {tick}.");
+        var usd = Floor(usdAmount, 2);
+        if (usd < 1m) throw new OrderRejectedException("The smallest market order is 1 $.");
+        var shares = Floor(usd / worstPrice, sizeDec);
+        if (shares <= 0) throw new OrderRejectedException("That amount buys no shares at this price.");
+        if (account.WalletType == WalletType.Eoa && !string.Equals(account.Wallet, signer.Address, StringComparison.OrdinalIgnoreCase))
+            throw new OrderRejectedException("For a plain wallet the wallet address must be the key's own address.");
+        return Sign(signer, account, book, Side.Buy, worstPrice, shares, usd, Micro(usd), Micro(shares), "FOK", null, apiKey, salt, nowMs);
+    }
+
+    static SignedOrder Sign(PolySigner signer, Account account, OrderBook book, Side side, decimal price, decimal s, decimal usd,
+        BigInteger makerAmount, BigInteger takerAmount, string orderType, long? expirationUnixSeconds, string apiKey, long salt, long nowMs)
+    {
         var maker = account.Wallet;
         var orderSigner = account.WalletType is WalletType.DepositWallet or WalletType.Eoa ? account.Wallet : signer.Address;
         var tokenId = BigInteger.Parse(book.TokenId, CultureInfo.InvariantCulture);
@@ -116,7 +141,7 @@ public static class OrderBuilder
             w.WriteString("timestamp", nowMs.ToString(CultureInfo.InvariantCulture));
             w.WriteString("tokenId", book.TokenId);
             w.WriteEndObject();
-            w.WriteString("orderType", expirationUnixSeconds == null ? "GTC" : "GTD");
+            w.WriteString("orderType", orderType);
             w.WriteString("owner", apiKey);
             w.WriteEndObject();
         }

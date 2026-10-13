@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>MurdocsPoly</AssemblyName>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MurdocsPoly.Core\MurdocsPoly.Core.csproj" />

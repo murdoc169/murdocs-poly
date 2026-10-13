@@ -22,14 +22,62 @@ sealed class MainForm : Form
     readonly bool _smoke;
 
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+    [DllImport("dwmapi.dll")] static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref Margins m);
+    [DllImport("user32.dll")] static extern int GetSystemMetricsForDpi(int index, uint dpi);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
+    [StructLayout(LayoutKind.Sequential)] struct Margins { public int L, R, T, B; }
+    [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct NcCalcSize { public Rect R0, R1, R2; public IntPtr Pos; }
+
+    const int ResizeStrip = 5;   // a few pixels of form above the page so the top edge can be grabbed to resize
+
+    /// <summary>No title bar: the page draws its own header and window buttons. Keeping the normal window frame styles keeps resizing, snapping and the shadow.</summary>
+    protected override void WndProc(ref Message m)
+    {
+        const int WM_NCCALCSIZE = 0x83, WM_NCHITTEST = 0x84;
+        if (m.Msg == WM_NCCALCSIZE && m.WParam != IntPtr.Zero)
+        {
+            var p = Marshal.PtrToStructure<NcCalcSize>(m.LParam);
+            int top = p.R0.Top;
+            base.WndProc(ref m);                                  // sides and bottom as normal
+            p = Marshal.PtrToStructure<NcCalcSize>(m.LParam);
+            p.R0.Top = top;                                       // but no title bar
+            if (WindowState == FormWindowState.Maximized)         // a maximized window overhangs the screen by the frame width
+            {
+                uint dpi = GetDpiForWindow(Handle);
+                p.R0.Top += GetSystemMetricsForDpi(33, dpi) + GetSystemMetricsForDpi(92, dpi);   // SM_CYSIZEFRAME + SM_CXPADDEDBORDER
+            }
+            Marshal.StructureToPtr(p, m.LParam, false);
+            m.Result = IntPtr.Zero;
+            return;
+        }
+        if (m.Msg == WM_NCHITTEST)
+        {
+            base.WndProc(ref m);
+            if (m.Result == (IntPtr)1 && WindowState == FormWindowState.Normal)   // HTCLIENT: the strip above the page is the top resize edge
+            {
+                var pt = PointToClient(new Point((short)(m.LParam.ToInt64() & 0xffff), (short)((m.LParam.ToInt64() >> 16) & 0xffff)));
+                if (pt.Y < ResizeStrip) m.Result = (IntPtr)(pt.X < 8 ? 13 : pt.X > ClientSize.Width - 8 ? 14 : 12);   // HTTOPLEFT / HTTOPRIGHT / HTTOP
+            }
+            return;
+        }
+        base.WndProc(ref m);
+    }
 
     public MainForm(bool smoke, string? shot)
     {
         _smoke = smoke; _smokeShot = shot;
         Text = "Murdoc's Poly"; BackColor = Color.FromArgb(12, 14, 19);
         ClientSize = new Size(1500, 960); StartPosition = FormStartPosition.CenterScreen;
+        Padding = new Padding(0, ResizeStrip, 0, 0);
         Controls.Add(_web);
-        HandleCreated += (_, _) => { int on = 1; DwmSetWindowAttribute(Handle, 20, ref on, sizeof(int)); };
+        HandleCreated += (_, _) =>
+        {
+            int on = 1; DwmSetWindowAttribute(Handle, 20, ref on, sizeof(int));
+            var mg = new Margins { T = 1 }; DwmExtendFrameIntoClientArea(Handle, ref mg);          // keeps the drop shadow
+            SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, 0x27);                                    // recalculate the frame now (no move, size, z-order)
+        };
         Shown += async (_, _) => await Start();
         FormClosed += (_, _) => _session.Dispose();
     }
@@ -40,7 +88,7 @@ sealed class MainForm : Form
         var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(profile, "webview"));
         await _web.EnsureCoreWebView2Async(env);
         var core = _web.CoreWebView2;
-        core.Settings.AreDevToolsEnabled = false; core.Settings.IsStatusBarEnabled = false; core.Settings.AreDefaultContextMenusEnabled = false;
+        core.Settings.IsNonClientRegionSupportEnabled = true; core.Settings.AreDevToolsEnabled = false; core.Settings.IsStatusBarEnabled = false; core.Settings.AreDefaultContextMenusEnabled = false;
         core.SetVirtualHostNameToFolderMapping("poly.local", Path.Combine(AppContext.BaseDirectory, "ui"), CoreWebView2HostResourceAccessKind.Allow);
         core.WebMessageReceived += async (_, e) => await OnMessage(e.WebMessageAsJson);
         core.NewWindowRequested += (_, e) => e.Handled = true;
@@ -83,6 +131,14 @@ sealed class MainForm : Form
                     return new { };
                 }
             case "trade": return await Trade(a);
+            case "win":
+                switch (a.GetProperty("op").GetString())
+                {
+                    case "min": WindowState = FormWindowState.Minimized; break;
+                    case "max": WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; break;
+                    case "close": Close(); break;
+                }
+                return new { max = WindowState == FormWindowState.Maximized };
             default: throw new InvalidOperationException("Unknown command " + cmd);
         }
     }
@@ -118,8 +174,10 @@ sealed class MainForm : Form
         var book = await _session.Api.GetBookAsync(outcome.TokenId);
         decimal? price = limit ? (limitCents > 0 ? PriceGrid.Snap(limitCents / 100m, book.TickSize) : null) : (buy ? book.BestAsk : book.BestBid);
         if (price == null) return new { ok = false, text = limit ? "Enter a limit price." : "There is no price on that side of the book right now." };
-        var (shares, usd) = OrderBuilder.Round(price.Value, amount / price.Value, book.TickSize);
-        if (shares < book.MinOrderSize) return new { ok = false, text = $"That is {shares} shares; the smallest order is {book.MinOrderSize}." };
+        bool marketBuy = buy && !limit;     // a dollar amount, filled or killed at the best ask (1 $ minimum), like the site's Market button
+        var (shares, usd) = marketBuy ? (Math.Floor(amount * 100m / price.Value) / 100m, Math.Floor(amount * 100m) / 100m) : OrderBuilder.Round(price.Value, amount / price.Value, book.TickSize);
+        if (marketBuy && usd < 1m) return new { ok = false, text = "The smallest market order is 1 $." };
+        if (!marketBuy && shares < book.MinOrderSize) return new { ok = false, text = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"That is {shares} shares; the smallest order is {book.MinOrderSize}.") };
 
         var text = buy
             ? $"BUY {shares} \"{outcome.Name}\" at {Fmt.Cents(price.Value, book.TickSize)}c\n{hit.Market.GroupItemTitle ?? hit.Market.Question}\n\nCosts {usd:0.00##} $, pays {shares:0.##} $ if it wins."
@@ -127,7 +185,8 @@ sealed class MainForm : Form
         if (MessageBox.Show(this, text, buy ? "Buy" : "Sell", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return new { ok = false, text = "Cancelled." };
         try
         {
-            var r = await _session.Client.PlaceLimitAsync(outcome.TokenId, buy ? Side.Buy : Side.Sell, price.Value, shares);
+            var r = marketBuy ? await _session.Client.PlaceMarketBuyAsync(outcome.TokenId, price.Value, usd)
+                              : await _session.Client.PlaceLimitAsync(outcome.TokenId, buy ? Side.Buy : Side.Sell, price.Value, shares);
             return new { ok = r.Success, text = r.Success ? $"{(buy ? "Bought" : "Sold")} order {r.Status}: {shares} at {Fmt.Cents(price.Value, book.TickSize)}c" : "Rejected: " + r.Error };
         }
         catch (OrderRejectedException ex) { return new { ok = false, text = ex.Message }; }

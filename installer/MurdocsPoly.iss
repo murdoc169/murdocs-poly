@@ -1,6 +1,6 @@
 ; Inno Setup script for Murdoc's Poly. Build: publish to dist\app first, then ISCC.exe installer\MurdocsPoly.iss
 #define AppName "Murdoc's Poly"
-#define AppVersion "0.2.0"
+#define AppVersion "0.2.1"
 
 [Setup]
 AppId={{B3C1D7E4-52A9-4F0B-8E63-7A19C2D4F5B8}

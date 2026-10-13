@@ -78,6 +78,17 @@ public sealed class TradingClient : IDisposable
         return ParseResult(status, text);
     }
 
+    /// <summary>Buys for a dollar amount, fill-or-kill, at the given worst price (the best ask when the order is sent).</summary>
+    public async Task<OrderResult> PlaceMarketBuyAsync(string tokenId, decimal worstPrice, decimal usdAmount)
+    {
+        await _guard.EnsureAllowedAsync();
+        var book = await _public.GetBookAsync(tokenId);
+        var c = await CredentialsAsync();
+        var order = OrderBuilder.BuildMarketBuy(_signer, Account, book, worstPrice, usdAmount, c.ApiKey, Random.Shared.NextInt64(1, 1L << 53), _now().ToUnixTimeMilliseconds());
+        var (status, text) = await Send(HttpMethod.Post, "/order", body: order.Body);
+        return ParseResult(status, text);
+    }
+
     public static OrderResult ParseResult(int status, string text)
     {
         try
