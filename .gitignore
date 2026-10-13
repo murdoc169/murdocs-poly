@@ -1,0 +1,11 @@
+.env*
+!.env.example
+bin/
+obj/
+node_modules/
+*.user
+dist/
+*.pdb
+smoke.txt
+web/favorites.json
+web/favoritecompetitions.json
