@@ -14,6 +14,10 @@ public sealed class OrderBook
 {
     public string TokenId { get; init; } = "";
     public decimal TickSize { get; set; } = 0.01m;
+    /// <summary>Smallest order in shares, the exchange kind ("v2", or empty for the older CTF exchange) and whether it is a negative-risk market (all from the book).</summary>
+    public decimal MinOrderSize { get; set; } = 5;
+    public string? Version { get; set; }
+    public bool NegRisk { get; set; }
     public SortedDictionary<decimal, decimal> Bids { get; } = new(Comparer<decimal>.Create((a, b) => b.CompareTo(a)));   // best (highest) first
     public SortedDictionary<decimal, decimal> Asks { get; } = new();                                                         // best (lowest) first
 
@@ -77,7 +81,7 @@ public sealed class PmEvent
 public sealed record Geoblock(bool Blocked, string? Country, string? Ip);
 
 /// <summary>Gamma sends several lists as JSON text inside a JSON string, e.g. "outcomes": "[\"Yes\", \"No\"]"; this reads both shapes.</summary>
-static class Json
+public static class Json
 {
     public static List<string> StringList(JsonElement e)
     {

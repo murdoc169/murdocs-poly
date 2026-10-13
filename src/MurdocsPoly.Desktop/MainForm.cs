@@ -13,19 +13,24 @@ sealed class MainForm : Form
     };
     const string Loading = "loading";
 
-    readonly PolymarketClient _api = new();
+    readonly TradingSession _session = new();
+    PolymarketClient _api => _session.Api;
     readonly TreeView _tree = new() { Dock = DockStyle.Fill, Font = new Font("Tahoma", 8.25f), HideSelection = false, ShowLines = true, FullRowSelect = true };
     readonly TextBox _search = new() { Dock = DockStyle.Top, Font = new Font("Tahoma", 9f), PlaceholderText = "Search events, press Enter" };
     readonly Label _status = new() { Dock = DockStyle.Bottom, Height = 36, Padding = new Padding(6, 3, 6, 0), Font = new Font("Tahoma", 8.25f), ForeColor = Color.DimGray };
     readonly bool _smoke;
     string _tradingNote = "Checking whether trading is allowed from here...";
+    readonly MenuStrip _menu = new();
     readonly Dictionary<string, PmEvent> _events = new();
 
     public MainForm(bool smoke)
     {
         _smoke = smoke;
         Text = "Murdoc's Poly"; ClientSize = new Size(420, 760); StartPosition = FormStartPosition.CenterScreen;
-        Controls.Add(_tree); Controls.Add(_status); Controls.Add(_search);
+        var account = new ToolStripMenuItem("Account");
+        account.DropDownItems.Add("Trading account...", null, (_, _) => EditAccount());
+        _menu.Items.Add(account); MainMenuStrip = _menu;
+        Controls.Add(_tree); Controls.Add(_status); Controls.Add(_search); Controls.Add(_menu);
         foreach (var (name, tag) in Categories) _tree.Nodes.Add(Placeholder(new TreeNode(name) { Tag = tag ?? "" , NodeFont = new Font("Tahoma", 8.25f, FontStyle.Bold) }));
         _tree.BeforeExpand += async (_, e) => await Fill(e.Node!);
         _tree.NodeMouseDoubleClick += (_, e) => OpenMarket(e.Node);
@@ -38,14 +43,8 @@ sealed class MainForm : Form
 
     async Task CheckLocation()
     {
-        try
-        {
-            var g = await _api.GeoblockAsync();
-            _tradingNote = g.Blocked
-                ? $"Read-only. Polymarket does not allow trading from your location ({g.Country ?? "unknown"})."
-                : "Read-only in this version.";
-        }
-        catch (Exception) { _tradingNote = "Read-only in this version."; }
+        var why = await _session.WhyNotAsync();
+        _tradingNote = why == "" ? "Trading is on for " + _session.Account!.Wallet[..10] + "..." : why;
         _status.Text = _tradingNote;
     }
 
@@ -106,7 +105,15 @@ sealed class MainForm : Form
     void OpenMarket(TreeNode? n)
     {
         if (n?.Tag is not PmMarket m || n.Parent?.Tag is not PmEvent ev) return;
-        new LadderForm(ev, m, _tradingNote).Show(this);
+        new LadderForm(ev, m, _session).Show(this);
+    }
+
+    void EditAccount()
+    {
+        using var f = new AccountForm(_session.Account);
+        if (f.ShowDialog(this) != DialogResult.OK) return;
+        _session.SetAccount(f.Removed ? null : f.Result);
+        _ = CheckLocation();
     }
 
     /// <summary>--smoke: open the first market of the first sports event and write what was found next to the program.</summary>

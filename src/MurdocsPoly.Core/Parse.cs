@@ -46,7 +46,8 @@ public static class Parse
     /// <summary>The full book from <c>GET /book</c>, or from a "book" message on the stream.</summary>
     public static OrderBook Book(JsonElement b, decimal tick = 0.01m)
     {
-        var book = new OrderBook { TokenId = Json.Str(b, "asset_id"), TickSize = tick };
+        var min = Json.Dec(b, "min_order_size");
+        var book = new OrderBook { TokenId = Json.Str(b, "asset_id"), TickSize = tick, MinOrderSize = min > 0 ? min : 5, NegRisk = Json.Bool(b, "neg_risk"), Version = Json.Str(b, "version") is { Length: > 0 } v ? v : null };
         book.Replace(Levels(Prop(b, "bids")), Levels(Prop(b, "asks")));
         return book;
     }
